@@ -3068,15 +3068,16 @@ void Executor::run(ExecutionState &initialState) {
 		KInstruction *ki = thread->pc;
 		if (prefix && !prefix->isFinished() && ki != prefix->getCurrentInst()) {
 			//cerr << "prefix: " << prefix->getCurrentInst() << " " << prefix->getCurrentInst()->inst->getOpcodeName() << " reality: " << ki << " " << ki->inst->getOpcodeName() << endl;
-			cerr << "thread id : " << thread->threadId << "\n";
-			ki->inst->print(errs());
-			cerr << endl;
-			prefix->getCurrentInst()->inst->print(errs());
-			cerr << endl;
-			cerr << "prefix unmatched\n";
-			execStatus = IGNOREDERROR;
-			terminateState(state);
-			break;
+//			cerr << "thread id : " << thread->threadId << "\n";
+//			ki->inst->print(errs());
+//			cerr << endl;
+//			prefix->getCurrentInst()->inst->print(errs());
+//			cerr << endl;
+//			cerr << "prefix unmatched\n";
+//			execStatus = IGNOREDERROR;
+//			terminateState(state);
+//			break;
+			prefix->finished();
 			//assert(0 && "prefix unmatched");
 		}
 

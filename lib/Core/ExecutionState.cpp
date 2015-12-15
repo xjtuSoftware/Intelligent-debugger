@@ -101,7 +101,7 @@ ExecutionState::ExecutionState(KFunction *kf)
     //ptreeNode(0)
 	{
 
-	threadScheduler = getThreadSchedulerByType(ThreadScheduler::FIFS);
+	threadScheduler = getThreadSchedulerByType(ThreadScheduler::RR);
 	//threadScheduler = getThreadSchedulerByType(ThreadScheduler::Preemptive);
 	Thread* thread = new Thread(Thread::getNextThreadId(), NULL, &addressSpace, kf);
 	threadList.addThread(thread);
@@ -121,7 +121,7 @@ ExecutionState::ExecutionState(KFunction *kf, Prefix* prefix)
     //ptreeNode(0)
 	{
 
-	threadScheduler = new GuidedThreadScheduler(this, ThreadScheduler::FIFS, prefix);
+	threadScheduler = new GuidedThreadScheduler(this, ThreadScheduler::RR, prefix);
 	//threadScheduler = new GuidedThreadScheduler(this, ThreadScheduler::Preemptive, prefix);
 	Thread* thread = new Thread(Thread::getNextThreadId(), NULL, &addressSpace, kf);
 	threadList.addThread(thread);

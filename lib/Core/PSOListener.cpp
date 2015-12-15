@@ -857,7 +857,8 @@ void PSOListener::afterRunMethodAsMain() {
 	unsigned allGlobal = 0;
 	if (executor->execStatus != Executor::SUCCESS) {
 		cerr << "######################执行有错误,放弃本次执行####################\n";
-		executor->isFinished = true;
+//		executor->isFinished = true;
+		executor->getNewPrefix();
 		//		if (rdManager.getCurrentTrace()->traceType == Trace::FAILED) {
 		//			cerr
 		//					<< "######################错误来自于前缀#############################\n";

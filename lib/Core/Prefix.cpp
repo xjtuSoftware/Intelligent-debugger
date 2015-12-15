@@ -52,6 +52,10 @@ bool Prefix::isFinished() {
 	return pos == eventList.end();
 }
 
+void Prefix::finished() {
+	pos = eventList.end();
+}
+
 Prefix::EventIterator Prefix::begin() {
 	return eventList.begin();
 }

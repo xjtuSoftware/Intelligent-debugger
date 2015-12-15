@@ -9,6 +9,7 @@
 #define LIB_CORE_DEALWITHSYMBOLIC_C_
 
 #define DEBUG 0
+#define RANGE 10000
 
 #include "DealWithSymbolicExpr.h"
 #include "llvm/IR/Instruction.h"
@@ -101,14 +102,16 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 	std::string varName;
 
 	//PathCondition
-	std::vector<ref<klee::Expr> > &kQueryExpr = trace->kQueryExpr;
-	std::vector<ref<klee::Expr> > &usefulkQueryExpr = trace->usefulkQueryExpr;
-	usefulkQueryExpr.clear();
-	for (std::vector<ref<Expr> >::iterator it = kQueryExpr.begin(), ie =
-			kQueryExpr.end(); it != ie; ++it) {
+	std::vector<ref<klee::Expr> > &usefulStoreSymbolicExpr = trace->usefulStoreSymbolicExpr;
+	std::vector<bool > &usefulExpr = trace->usefulExpr;
+	usefulExpr.clear();
+	for (std::vector<ref<Expr> >::iterator it = usefulStoreSymbolicExpr.begin(), ie =
+			usefulStoreSymbolicExpr.end(); it != ie; ++it) {
 		varName = getVarName(it->get()->getKid(1));
 		if (RelatedSymbolicExpr.find(varName) != RelatedSymbolicExpr.end()) {
-			usefulkQueryExpr.push_back(*it);
+			usefulExpr.push_back(true);
+		} else {
+			usefulExpr.push_back(false);
 		}
 	}
 
@@ -164,20 +167,102 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 	}
 }
 
+void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
+
+	std::string varName;
+#if DEBUG
+	std::cerr << "\n event id : " << event->eventId << std::endl;
+#endif
+
+#if DEBUG
+	std::cerr << "\n PathCondition : " << std::endl;
+#endif
+	//PathCondition
+	std::vector<Event*> &usefulStoreEvent = trace->usefulStoreEvent;
+	std::vector<bool > &usefulExpr = trace->usefulExpr;
+	long totalExpr = usefulExpr.size();
+	for (long i = 0; i <totalExpr; i++) {
+		if (usefulStoreEvent[i]->eventId > event->eventId +RANGE) {
+			usefulExpr[i] = false;
+		}
+	}
+
+#if DEBUG
+	std::cerr << "\n readSet : " << std::endl;
+#endif
+	//readSet
+	std::map<std::string, std::vector<Event *> > &usefulReadSet = trace->usefulReadSet;
+	for (std::map<std::string, std::vector<Event *> >::iterator nit =
+			usefulReadSet.begin(), nie = usefulReadSet.end(); nit != nie; ++nit) {
+#if DEBUG
+		std::cerr << "\n name : " << nit->first << std::endl;
+#endif
+		for (std::vector<Event *>::iterator it =
+				nit->second.begin(), ie = nit->second.end(); it != ie; ) {
+			--ie;
+#if DEBUG
+			std::cerr << "event id : " << (*ie)->eventId << std::endl;
+#endif
+			if ((*ie)->eventId > event->eventId +RANGE) {
+				nit->second.pop_back();
+			}
+		}
+	}
+
+#if DEBUG
+	std::cerr << "\n writeSet : " << std::endl;
+#endif
+	//writeSet
+	std::map<std::string, std::vector<Event *> > &usefulWriteSet = trace->usefulWriteSet;
+	for (std::map<std::string, std::vector<Event *> >::iterator nit =
+			usefulWriteSet.begin(), nie = usefulWriteSet.end(); nit != nie; ++nit) {
+#if DEBUG
+		std::cerr << "\n name : " << nit->first << std::endl;
+#endif
+		for (std::vector<Event *>::iterator it =
+				nit->second.begin(), ie = nit->second.end(); it != ie; ) {
+			--ie;
+#if DEBUG
+			std::cerr << "event id : " << (*ie)->eventId << std::endl;
+#endif
+			if ((*ie)->eventId > event->eventId +RANGE) {
+				nit->second.pop_back();
+			}
+		}
+	}
+
+#if DEBUG
+	std::cerr << "\n event : " << std::endl;
+#endif
+	//event
+	for (std::vector<Event*>::iterator currentEvent = trace->path.begin(), endEvent = trace->path.end();
+			currentEvent != endEvent; currentEvent++) {
+		if ((*currentEvent)->eventId > event->eventId +RANGE) {
+			if ((*currentEvent)->inst->inst->getOpcode() == llvm::Instruction::Load
+					|| (*currentEvent)->inst->inst->getOpcode() == llvm::Instruction::Store) {
+				(*currentEvent)->usefulGlobal = false;
+			}
+		}
+	}
+}
+
 void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 
 	std::string varName;
 	std::vector<std::string> remainingExprVarName;
 	std::vector<ref<klee::Expr> > remainingExpr;
+	std::vector<Event*> remainingEvent;
 	allRelatedSymbolicExpr.clear();
 	remainingExprVarName.clear();
 	remainingExpr.clear();
 	std::vector<ref<klee::Expr> > &storeSymbolicExpr = trace->storeSymbolicExpr;
-	for (std::vector<ref<Expr> >::iterator it = storeSymbolicExpr.begin(), ie =
-			storeSymbolicExpr.end(); it != ie; ++it) {
-		varName = getVarName(it->get()->getKid(1));
+	std::vector<Event*> &storeEvent = trace->storeEvent;
+	long totalStore = storeSymbolicExpr.size();
+	for (long i = 0; i < totalStore; i++) {
+		varName = getVarName(storeSymbolicExpr[i]->getKid(1));
 		remainingExprVarName.push_back(varName);
-		remainingExpr.push_back(it->get());
+		remainingExpr.push_back(storeSymbolicExpr[i]);
+		remainingEvent.push_back(storeEvent[i]);
 	}
 #if DEBUG
 		std::cerr << "\n storeSymbolicExpr " << std::endl;
@@ -232,19 +317,21 @@ void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 	}
 #endif
 
-	std::vector<ref<klee::Expr> > &kQueryExpr = trace->kQueryExpr;
+	std::vector<ref<klee::Expr> > &usefulStoreSymbolicExpr = trace->usefulStoreSymbolicExpr;
+	std::vector<Event*> &usefulStoreEvent = trace->usefulStoreEvent;
 	std::map<std::string, std::set<std::string>* > &varRelatedSymbolicExpr = trace->varRelatedSymbolicExpr;
 	for (std::set<std::string>::iterator nit = allRelatedSymbolicExpr.begin();
 			nit != allRelatedSymbolicExpr.end(); ++nit) {
 		varName = *nit;
 		std::vector<ref<Expr> >::iterator itt = remainingExpr.begin();
+		std::vector<Event*>::iterator ittt = remainingEvent.begin();
 		for (std::vector<std::string>::iterator it =
 				remainingExprVarName.begin(), ie = remainingExprVarName.end();
 				it != ie;) {
 			if (varName == *it) {
-				remainingExprVarName.erase(it);
-				--ie;
-				kQueryExpr.push_back(*itt);
+
+				usefulStoreSymbolicExpr.push_back(*itt);
+				usefulStoreEvent.push_back(*ittt);
 
 				std::set<std::string>* tempSymbolicExpr = new std::set<std::string>();
 				resolveSymbolicExpr(itt->get(), tempSymbolicExpr);
@@ -254,15 +341,11 @@ void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 					varRelatedSymbolicExpr[varName] = tempSymbolicExpr;
 				}
 				addExprToSet(tempSymbolicExpr, &allRelatedSymbolicExpr);
-#if DEBUG
-				std::cerr << "\n" << varName << "\n varRelatedSymbolicExpr " << std::endl;
-				std::cerr << *itt << "\n";
-				for (std::set<std::string>::iterator it = tempSymbolicExpr->begin(),
-						ie = tempSymbolicExpr->end(); it != ie; ++it) {
-					std::cerr << *it << std::endl;
-				}
-#endif
+
+				remainingExprVarName.erase(it);
 				remainingExpr.erase(itt);
+				remainingEvent.erase(ittt);
+				--ie;
 			} else {
 				++it;
 				++itt;
@@ -271,7 +354,7 @@ void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 	}
 
 #if DEBUG
-	std::cerr << "\n" << varName << "\n varRelatedSymbolicExpr " << std::endl;
+	std::cerr << "\n varRelatedSymbolicExpr " << std::endl;
 	for (std::map<std::string, std::set<std::string>* >::iterator nit = varRelatedSymbolicExpr.begin();
 			nit != varRelatedSymbolicExpr.end(); ++nit) {
 		std::cerr << "name : " << (*nit).first << "\n";
@@ -417,7 +500,7 @@ void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 
 }
 
-bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::string>* relatedSymbolicExpr){
+bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::string>* relatedSymbolicExpr, Event* event){
 	bool branch = false;
 	std::set<std::string> &RelatedSymbolicExpr = trace->RelatedSymbolicExpr;
 	RelatedSymbolicExpr.clear();
@@ -441,9 +524,6 @@ bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::stri
 		if (varRelatedSymbolicExpr.find(varName) != varRelatedSymbolicExpr.end()) {
 			addExprToSet(varRelatedSymbolicExpr[varName], &RelatedSymbolicExpr);
 		}
-#if DEBUG
-		std::cerr << "\n addExprToSet(relatedSymbolicExpr, &RelatedSymbolicExpr); " << std::endl;
-#endif
 	}
 #if DEBUG
 	std::cerr << "\n RelatedSymbolicExpr " << std::endl;
@@ -463,6 +543,7 @@ bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::stri
 	}
 	if(branch){
 		fillterTrace(trace, RelatedSymbolicExpr);
+		fillterTraceAfter(trace, event);
 		return true;
 	}else {
 		return false;

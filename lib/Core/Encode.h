@@ -47,7 +47,7 @@ public:
 		runtimeData->solvingTimes += solvingTimes;
 	}
 	void buildAllFormula();
-	void buildifAndassert();
+	void buildAndTranslate();
 	void showInitTrace();
 	void check_output();
 	void check_if();
@@ -62,6 +62,7 @@ private:
 	vector<pair<Event*, expr> > ifFormula;
 	vector<pair<Event*, expr> > assertFormula;
 	vector<pair<Event*, expr> > rwFormula;
+	vector<pair<Event*, expr> > storeFormula;
 
 	void buildInitValueFormula(solver z3_solver_init);
 	void buildPathCondition(solver z3_solver_pc);

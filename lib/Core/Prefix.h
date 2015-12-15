@@ -35,6 +35,7 @@ public:
 	void increase();
 	void reuse();
 	bool isFinished();
+	void finished();
 	EventIterator begin();
 	EventIterator end();
 	EventIterator current();

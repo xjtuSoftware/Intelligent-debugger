@@ -24,9 +24,10 @@ private:
 
 
 public:
-	void fillterTrace(Trace* trace, std::set<std::string> allRelatedSymbolicExpr);
+	void fillterTrace(Trace* trace, std::set<std::string> RelatedSymbolicExpr);
+	void fillterTraceAfter(Trace* trace, Event* event);
 	void filterUseless(Trace* trace);
-	bool filterUselessWithSet(Trace* trace, std::set<std::string>* relatedSymbolicExpr);
+	bool filterUselessWithSet(Trace* trace, std::set<std::string>* relatedSymbolicExpr, Event* event);
 	void addExprToSet(std::set<std::string>* Expr, std::set<std::string>* relatedSymbolicExpr);
 	bool isRelated(std::string varName);
 	std::string getVarName(ref<Expr> value);
