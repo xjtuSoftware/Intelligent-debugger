@@ -3073,7 +3073,7 @@ void Executor::run(ExecutionState &initialState) {
 //			cerr << endl;
 //			prefix->getCurrentInst()->inst->print(errs());
 //			cerr << endl;
-//			cerr << "prefix unmatched\n";
+			cerr << "prefix unmatched\n";
 //			execStatus = IGNOREDERROR;
 //			terminateState(state);
 //			break;

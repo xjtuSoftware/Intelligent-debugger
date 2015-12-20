@@ -46,7 +46,7 @@ public:
 		runtimeData->allFormulaNum += formulaNum;
 		runtimeData->solvingTimes += solvingTimes;
 	}
-	void buildAllFormula();
+	void buildAllFormula(Event* curr);
 	void buildAndTranslate();
 	void showInitTrace();
 	void check_output();
@@ -66,7 +66,7 @@ private:
 
 	void buildInitValueFormula(solver z3_solver_init);
 	void buildPathCondition(solver z3_solver_pc);
-	void buildMemoryModelFormula();
+	void buildMemoryModelFormula(Event* curr);
 	void buildPartialOrderFormula();
 	void buildReadWriteFormula(solver z3_solver_rw);
 	void buildSynchronizeFormula();

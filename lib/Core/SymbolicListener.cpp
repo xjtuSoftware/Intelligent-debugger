@@ -96,9 +96,9 @@ void SymbolicListener::executeInstruction(ExecutionState &state, KInstruction *k
 	if ((*currentEvent)) {
 		Instruction* inst = ki->inst;
 		Thread* thread = state.currentThread;
-		cerr << "event name : " << (*currentEvent)->eventName << " ";
-		cerr << "thread id : " << thread->threadId;
-		inst->dump();
+//		cerr << "event name : " << (*currentEvent)->eventName << " ";
+//		cerr << "thread id : " << thread->threadId;
+//		inst->dump();
 //		cerr << "thread id : " << (*currentEvent)->threadId ;
 //		(*currentEvent)->inst->inst->dump();
 		switch (inst->getOpcode()) {
@@ -144,7 +144,7 @@ void SymbolicListener::executeInstruction(ExecutionState &state, KInstruction *k
 					trace->storeSymbolicExpr.push_back(constraint);
 					trace->storeEvent.push_back(*currentEvent);
 //					cerr << "event name : " << (*currentEvent)->eventName << "\n";
-					cerr << "store constraint : " << constraint << "\n";
+//					cerr << "store constraint : " << constraint << "\n";
 					if (value->getKind() == Expr::Constant) {
 
 					} else if (value->getKind() == Expr::Concat || value->getKind() == Expr::Read) {
@@ -410,7 +410,7 @@ void SymbolicListener::instructionExecuted(ExecutionState &state, KInstruction *
 //					cerr << "load globalVarFullName : " << (*currentEvent)->globalVarFullName << "\n";
 //					cerr << "load value : " << value << "\n";
 					ref<Expr> constraint = EqExpr::create(value, symbolic);
-					cerr << "rwSymbolicExpr : " << constraint << "\n";
+//					cerr << "rwSymbolicExpr : " << constraint << "\n";
 					trace->rwSymbolicExpr.push_back(constraint);
 					trace->rwEvent.push_back(*currentEvent);
 				}

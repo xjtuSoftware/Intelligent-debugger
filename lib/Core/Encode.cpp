@@ -64,8 +64,8 @@
 #define BUFFERSIZE 300
 #define BIT_WIDTH 64
 #define POINT_BIT_WIDTH 64
-#define RANGE 10000
-
+#define RANGE 20000
+#define INT_ARITHMETIC 1
 
 using namespace llvm;
 using namespace std;
@@ -77,10 +77,10 @@ struct Pair {
 	Event *event;
 };
 
-void Encode::buildAllFormula() {
+void Encode::buildAllFormula(Event* curr) {
 	buildInitValueFormula(z3_solver);
 	buildPathCondition(z3_solver);
-	buildMemoryModelFormula();
+	buildMemoryModelFormula(curr);
 	buildPartialOrderFormula();
 	buildReadWriteFormula(z3_solver);
 	buildSynchronizeFormula();
@@ -253,7 +253,9 @@ void Encode::check_if() {
 		cerr << "CCost : " << cost << "\n";
 
 		if (!branch) {
+#if BRANCH_INFO
 			cerr << "NNo!\n";
+#endif
 //		} else {
 //			cerr << "YYes!\n";
 //			struct timeval start, finish;
@@ -293,7 +295,7 @@ void Encode::check_if() {
 		}
 
 		if(branch){
-			buildAllFormula();
+			buildAllFormula(curr);
 
 			//添加读写的解
 			std::set<std::string> &RelatedSymbolicExpr = trace->RelatedSymbolicExpr;
@@ -545,14 +547,22 @@ void Encode::showPrefixInfo(Prefix* prefix, Event* ifEvent) {
 				continue;
 			}
 			stringstream ss;
+#if INT_ARITHMETIC
+			ss << m.eval(z3_ctx.int_const(str.c_str()));
+#else
 			ss << m.eval(z3_ctx.bv_const(str.c_str(), BIT_WIDTH));	//just for
+#endif
 			out_to_file << ss.str();
 		}
 		if (currEvent->isLocal) {
 			out_to_file << "--" << currEvent->varName << "=";
 			string str = currEvent->varName;
 			stringstream ss;
+#if INT_ARITHMETIC
+			ss << m.eval(z3_ctx.int_const(str.c_str()));
+#else
 			ss << m.eval(z3_ctx.bv_const(str.c_str(), BIT_WIDTH));
+#endif
 			out_to_file << ss.str();
 		}
 		out_to_file << "\n";
@@ -1001,7 +1011,8 @@ void Encode::buildAndTranslate() {
 		event = trace->usefulStoreEvent[i];
 		res = kq->getZ3Expr(trace->usefulStoreSymbolicExpr[i]);
 		storeFormula.push_back(make_pair(event, res));
-		cerr << "storeFormula : " << res << "\n";
+//		cerr << "constraint : " << trace->usefulStoreSymbolicExpr[i] << "\n";
+//		cerr << "storeFormula : " << res << "\n";
 	}
 
 //	buildAllFormula();
@@ -1020,7 +1031,11 @@ expr Encode::buildExprForConstantValue(Value *V, bool isLeft,
 		if (num_bit == 1)
 			ret = z3_ctx.bool_val(val);
 		else
+#if INT_ARITHMETIC
+			ret = z3_ctx.int_val(val);
+#else
 			ret = z3_ctx.bv_val(val, BIT_WIDTH);
+#endif
 	} else if (ConstantFP *cf = dyn_cast<ConstantFP>(V)) {
 		double val;
 		APFloat apf = cf->getValueAPF();
@@ -1038,7 +1053,11 @@ expr Encode::buildExprForConstantValue(Value *V, bool isLeft,
 		ret = z3_ctx.real_val(s);
 	} else if (dyn_cast<ConstantPointerNull>(V)) {
 		//%cmp = icmp eq %struct.bounded_buf_tag* %tmp, null
+#if INT_ARITHMETIC
+		ret = z3_ctx.int_val(0);
+#else
 		ret = z3_ctx.bv_val(0, BIT_WIDTH);
+#endif
 	} else if (llvm::ConstantExpr* constantExpr = dyn_cast<llvm::ConstantExpr>(
 			V)) {
 		Instruction* inst = constantExpr->getAsInstruction();
@@ -1048,7 +1067,11 @@ expr Encode::buildExprForConstantValue(Value *V, bool isLeft,
 			ConstantInt * ci = dyn_cast<ConstantInt>(ptrtoint->getOperand(0));
 			assert(ci && "Impossible!");
 			int val = ci->getValue().getLimitedValue();
+#if INT_ARITHMETIC
+			ret = z3_ctx.int_val(val);
+#else
 			ret = z3_ctx.bv_val(val, BIT_WIDTH);	//to pointer, the default is 32bit.
+#endif
 		} else {
 			assert(0 && "unknown type of Value:1");
 		}
@@ -1091,7 +1114,11 @@ z3::sort Encode::llvmTy_to_z3Ty(const Type *typ) {
 		if (typ->isIntegerTy(1)) {
 			return z3_ctx.bool_sort();
 		} else {
+#if INT_ARITHMETIC
+			return z3_ctx.int_sort();
+#else
 			return z3_ctx.bv_sort(BIT_WIDTH);
+#endif
 		}
 		break;
 	}
@@ -1099,13 +1126,21 @@ z3::sort Encode::llvmTy_to_z3Ty(const Type *typ) {
 		assert(0 && "couldn't handle Function type!");
 		break;
 	case Type::StructTyID:
+#if INT_ARITHMETIC
+		return z3_ctx.int_sort();
+#else
 		return z3_ctx.bv_sort(BIT_WIDTH);
+#endif
 		break;
 	case Type::ArrayTyID:
 		assert(0 && "couldn't handle Array type!");             //must
 		break;
 	case Type::PointerTyID:
+#if INT_ARITHMETIC
+		return z3_ctx.int_sort();
+#else
 		return z3_ctx.bv_sort(BIT_WIDTH);
+#endif
 	case Type::VectorTyID:
 		assert(0 && "couldn't handle Vector type!");
 		break;
@@ -1118,11 +1153,14 @@ z3::sort Encode::llvmTy_to_z3Ty(const Type *typ) {
 		assert(0 && "No such type!");
 		break;
 	}
-
+#if INT_ARITHMETIC
+	return z3_ctx.int_sort();
+#else
 	return z3_ctx.bv_sort(BIT_WIDTH);
+#endif
 }        //
 
-void Encode::buildMemoryModelFormula() {
+void Encode::buildMemoryModelFormula(Event* curr) {
 #if FORMULA_DEBUG
 	cerr << "\nMemoryModelFormula:\n";
 #endif
@@ -1171,9 +1209,9 @@ void Encode::buildMemoryModelFormula() {
 			Event* pre = thread->at(index);
 			Event* post = thread->at(index + 1);
 			//by clustering
-			if (pre->eventName == post->eventName)
+			if (pre->eventName == post->eventName) {
 				continue;
-			uniqueEvent++;
+			}
 			expr preExpr = z3_ctx.int_const(pre->eventName.c_str());
 			expr postExpr = z3_ctx.int_const(post->eventName.c_str());
 			expr temp = (preExpr < postExpr);
@@ -1181,9 +1219,13 @@ void Encode::buildMemoryModelFormula() {
 			cerr << temp << "\n";
 #endif
 			z3_solver.add(temp);
+
+			if (pre->eventId < curr->eventId - RANGE) {
+				z3_solver.add(preExpr == z3_ctx.int_val(uniqueEvent));
+			}
 			//statics
 			formulaNum++;
-
+			uniqueEvent++;
 			//eventNameInZ3 will be used at check_if
 			eventNameInZ3.insert(
 					map<string, expr>::value_type(pre->eventName, preExpr));
@@ -1285,7 +1327,7 @@ void Encode::controlGranularity(int level) {
 }
 
 InstType Encode::getInstOpType(Event * event) {
-	if (event->isGlobal) {
+	if (event->usefulGlobal) {
 		return GlobalVarOp;
 	}
 	Instruction *I = event->inst->inst;

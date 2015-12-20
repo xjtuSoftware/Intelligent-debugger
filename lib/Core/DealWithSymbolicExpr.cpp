@@ -9,7 +9,7 @@
 #define LIB_CORE_DEALWITHSYMBOLIC_C_
 
 #define DEBUG 0
-#define RANGE 10000
+#define RANGE 20000
 
 #include "DealWithSymbolicExpr.h"
 #include "llvm/IR/Instruction.h"
@@ -170,6 +170,7 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
 
 	std::string varName;
+	long num = 0;
 #if DEBUG
 	std::cerr << "\n event id : " << event->eventId << std::endl;
 #endif
@@ -203,8 +204,12 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
 #if DEBUG
 			std::cerr << "event id : " << (*ie)->eventId << std::endl;
 #endif
-			if ((*ie)->eventId > event->eventId +RANGE) {
+			if ((*ie)->eventId > event->eventId + RANGE) {
+				(*ie)->usefulGlobal = false;
 				nit->second.pop_back();
+			} else if ((*ie)->eventId < event->eventId - RANGE) {
+				(*ie)->usefulGlobal = false;
+				nit->second.erase(ie);
 			}
 		}
 	}
@@ -214,36 +219,69 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
 #endif
 	//writeSet
 	std::map<std::string, std::vector<Event *> > &usefulWriteSet = trace->usefulWriteSet;
+	std::map<std::string, llvm::Constant*> &useful_global_variable_initializer = trace->useful_global_variable_initializer;
 	for (std::map<std::string, std::vector<Event *> >::iterator nit =
 			usefulWriteSet.begin(), nie = usefulWriteSet.end(); nit != nie; ++nit) {
 #if DEBUG
 		std::cerr << "\n name : " << nit->first << std::endl;
 #endif
+		num = 0;
 		for (std::vector<Event *>::iterator it =
 				nit->second.begin(), ie = nit->second.end(); it != ie; ) {
 			--ie;
 #if DEBUG
 			std::cerr << "event id : " << (*ie)->eventId << std::endl;
 #endif
-			if ((*ie)->eventId > event->eventId +RANGE) {
+			if ((*ie)->eventId > event->eventId + RANGE) {
+				(*ie)->usefulGlobal = false;
 				nit->second.pop_back();
+			} else if ((*ie)->eventId < event->eventId - RANGE) {
+				if (num == 1) {
+					(*ie)->usefulGlobal = false;
+					nit->second.erase(ie);
+				} else {
+					num = 1;
+				}
 			}
+		}
+		if (num == 1) {
+			useful_global_variable_initializer.erase(nit->first);
 		}
 	}
 
 #if DEBUG
-	std::cerr << "\n event : " << std::endl;
+	std::cerr << "\n all_lock_unlock : " << std::endl;
 #endif
-	//event
-	for (std::vector<Event*>::iterator currentEvent = trace->path.begin(), endEvent = trace->path.end();
-			currentEvent != endEvent; currentEvent++) {
-		if ((*currentEvent)->eventId > event->eventId +RANGE) {
-			if ((*currentEvent)->inst->inst->getOpcode() == llvm::Instruction::Load
-					|| (*currentEvent)->inst->inst->getOpcode() == llvm::Instruction::Store) {
-				(*currentEvent)->usefulGlobal = false;
+	//all_lock_unlock
+	std::map<std::string, std::vector<LockPair *> > &all_lock_unlock = trace->all_lock_unlock;
+	for (std::map<std::string, std::vector<LockPair *> >::iterator nit =
+			all_lock_unlock.begin(), nie = all_lock_unlock.end(); nit != nie; ++nit) {
+#if DEBUG
+		std::cerr << "\n name : " << nit->first << std::endl;
+#endif
+		for (std::vector<LockPair *>::iterator it =
+				nit->second.begin(), ie = nit->second.end(); it != ie; ) {
+			--ie;
+			num = 0;
+#if DEBUG
+			std::cerr << "lockEvent id : " << (*ie)->lockEvent->eventId << std::endl;
+			std::cerr << "unlockEvent id : " << (*ie)->unlockEvent->eventId << std::endl;
+#endif
+			if ((*ie)->lockEvent->eventId > event->eventId + RANGE) {
+				num = 1;
+			} else if ((*ie)->unlockEvent->eventId < event->eventId - RANGE) {
+				num = 1;
+			}
+			if (num == 1) {
+//				(*ie)->lockEvent->usefulGlobal = false;
+//				(*ie)->unlockEvent->usefulGlobal = false;
+//				nit->second.erase(ie);
+			} else {
+
 			}
 		}
 	}
+
 }
 
 void DealWithSymbolicExpr::filterUseless(Trace* trace) {
