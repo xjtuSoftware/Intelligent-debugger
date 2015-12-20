@@ -1111,8 +1111,9 @@ z3::sort Encode::llvmTy_to_z3Ty(const Type *typ) {
 		assert(0 && "couldn't handle X86_MMX type!");
 		break;
 	case Type::IntegerTyID: {
-		if (typ->isIntegerTy(1)) {
-			return z3_ctx.bool_sort();
+		unsigned num_bit = ((IntegerType *) typ)->getBitWidth();
+		if (num_bit == 1) {
+			return z3_ctx.bool_sort();;
 		} else {
 #if INT_ARITHMETIC
 			return z3_ctx.int_sort();
