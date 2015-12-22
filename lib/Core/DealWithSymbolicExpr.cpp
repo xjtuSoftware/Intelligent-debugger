@@ -9,7 +9,7 @@
 #define LIB_CORE_DEALWITHSYMBOLIC_C_
 
 #define DEBUG 0
-#define RANGE 20000
+#define RANGE 40000
 
 #include "DealWithSymbolicExpr.h"
 #include "llvm/IR/Instruction.h"
@@ -90,6 +90,27 @@ void DealWithSymbolicExpr::addExprToSet(std::set<std::string>* Expr,
 	}
 }
 
+void DealWithSymbolicExpr::addExprToVector(std::set<std::string>* Expr,
+		std::vector<std::string> &relatedSymbolicExpr) {
+
+	for (std::set<std::string>::iterator it =
+			Expr->begin(), ie = Expr->end(); it != ie; ++it) {
+		std::string varName =*it;
+		bool p = true;
+		for (std::vector<std::string>::iterator vit =
+				relatedSymbolicExpr.begin(), vie = relatedSymbolicExpr.end(); vit != vie; ++vit) {
+			if (varName == *vit) {
+				p = false;
+				break;
+			}
+		}
+		if (p == true) {
+			relatedSymbolicExpr.push_back(varName);
+		}
+
+	}
+}
+
 bool DealWithSymbolicExpr::isRelated(std::string varName) {
 	if (allRelatedSymbolicExpr.find(varName) != allRelatedSymbolicExpr.end()) {
 		return true;
@@ -167,7 +188,7 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 	}
 }
 
-void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
+void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, unsigned eventIdPre, unsigned eventIdPost){
 
 	std::string varName;
 	long num = 0;
@@ -177,14 +198,23 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
 
 #if DEBUG
 	std::cerr << "\n PathCondition : " << std::endl;
+	std::vector<ref<klee::Expr> > &usefulStoreSymbolicExpr = trace->usefulStoreSymbolicExpr;
 #endif
 	//PathCondition
 	std::vector<Event*> &usefulStoreEvent = trace->usefulStoreEvent;
 	std::vector<bool > &usefulExpr = trace->usefulExpr;
+
 	long totalExpr = usefulExpr.size();
 	for (long i = 0; i <totalExpr; i++) {
-		if (usefulStoreEvent[i]->eventId > event->eventId +RANGE) {
+//		if (usefulStoreEvent[i]->eventId > event->eventId +RANGE) {
+		if (usefulStoreEvent[i]->eventId > eventIdPost) {
 			usefulExpr[i] = false;
+		}  else {
+#if DEBUG
+			std::cerr << "eventId : " << usefulStoreEvent[i]->eventId << std::endl;
+			std::cerr << "usefulExpr : " << usefulExpr[i] << std::endl;
+			std::cerr << "usefulStoreSymbolicExpr : " << usefulStoreSymbolicExpr[i] << std::endl;
+#endif
 		}
 	}
 
@@ -202,14 +232,20 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
 				nit->second.begin(), ie = nit->second.end(); it != ie; ) {
 			--ie;
 #if DEBUG
-			std::cerr << "event id : " << (*ie)->eventId << std::endl;
+			std::cerr << "event id : " << (*ie)->eventId << " name : " << (*ie)->globalVarFullName << std::endl;
 #endif
-			if ((*ie)->eventId > event->eventId + RANGE) {
+//			if ((*ie)->eventId > event->eventId + RANGE) {
+			if ((*ie)->eventId > eventIdPost) {
 				(*ie)->usefulGlobal = false;
 				nit->second.pop_back();
-			} else if ((*ie)->eventId < event->eventId - RANGE) {
+			} else if ((*ie)->eventId < eventIdPre) {
 				(*ie)->usefulGlobal = false;
 				nit->second.erase(ie);
+			} else {
+#if DEBUG
+				std::cerr << "usefulGlobal : " << (*ie)->usefulGlobal << std::endl;
+#endif
+				(*ie)->usefulGlobal =true;
 			}
 		}
 	}
@@ -230,18 +266,24 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
 				nit->second.begin(), ie = nit->second.end(); it != ie; ) {
 			--ie;
 #if DEBUG
-			std::cerr << "event id : " << (*ie)->eventId << std::endl;
+			std::cerr << "event id : " << (*ie)->eventId << " name : " << (*ie)->globalVarFullName << std::endl;
 #endif
-			if ((*ie)->eventId > event->eventId + RANGE) {
+//			if ((*ie)->eventId > event->eventId + RANGE) {
+			if ((*ie)->eventId > eventIdPost) {
 				(*ie)->usefulGlobal = false;
 				nit->second.pop_back();
-			} else if ((*ie)->eventId < event->eventId - RANGE) {
+			} else if ((*ie)->eventId < eventIdPre) {
 				if (num == 1) {
 					(*ie)->usefulGlobal = false;
 					nit->second.erase(ie);
 				} else {
 					num = 1;
 				}
+			} else {
+#if DEBUG
+				std::cerr << "usefulGlobal : " << (*ie)->usefulGlobal << std::endl;
+#endif
+				(*ie)->usefulGlobal = true;
 			}
 		}
 		if (num == 1) {
@@ -267,15 +309,16 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, Event* event){
 			std::cerr << "lockEvent id : " << (*ie)->lockEvent->eventId << std::endl;
 			std::cerr << "unlockEvent id : " << (*ie)->unlockEvent->eventId << std::endl;
 #endif
-			if ((*ie)->lockEvent->eventId > event->eventId + RANGE) {
+//			if ((*ie)->lockEvent->eventId > event->eventId + RANGE) {
+			if ((*ie)->lockEvent->eventId > eventIdPost) {
 				num = 1;
-			} else if ((*ie)->unlockEvent->eventId < event->eventId - RANGE) {
+			} else if ((*ie)->unlockEvent->eventId < eventIdPre) {
 				num = 1;
 			}
 			if (num == 1) {
-//				(*ie)->lockEvent->usefulGlobal = false;
-//				(*ie)->unlockEvent->usefulGlobal = false;
-//				nit->second.erase(ie);
+				(*ie)->lockEvent->usefulGlobal = false;
+				(*ie)->unlockEvent->usefulGlobal = false;
+				nit->second.erase(ie);
 			} else {
 
 			}
@@ -358,14 +401,16 @@ void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 	std::vector<ref<klee::Expr> > &usefulStoreSymbolicExpr = trace->usefulStoreSymbolicExpr;
 	std::vector<Event*> &usefulStoreEvent = trace->usefulStoreEvent;
 	std::map<std::string, std::set<std::string>* > &varRelatedSymbolicExpr = trace->varRelatedSymbolicExpr;
-	for (std::set<std::string>::iterator nit = allRelatedSymbolicExpr.begin();
-			nit != allRelatedSymbolicExpr.end(); ++nit) {
-		varName = *nit;
+	std::vector<std::string> allRelatedSymbolicExprVector;
+	addExprToVector(&allRelatedSymbolicExpr, allRelatedSymbolicExprVector);
+	unsigned size = allRelatedSymbolicExprVector.size();
+	for (unsigned i = 0; i < size; i++) {
+		varName = allRelatedSymbolicExprVector[i];
 		std::vector<ref<Expr> >::iterator itt = remainingExpr.begin();
 		std::vector<Event*>::iterator ittt = remainingEvent.begin();
 		for (std::vector<std::string>::iterator it =
-				remainingExprVarName.begin(), ie = remainingExprVarName.end();
-				it != ie;) {
+				remainingExprVarName.begin();
+				it != remainingExprVarName.end();) {
 			if (varName == *it) {
 
 				usefulStoreSymbolicExpr.push_back(*itt);
@@ -379,14 +424,15 @@ void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 					varRelatedSymbolicExpr[varName] = tempSymbolicExpr;
 				}
 				addExprToSet(tempSymbolicExpr, &allRelatedSymbolicExpr);
-
+				addExprToVector(tempSymbolicExpr, allRelatedSymbolicExprVector);
+				size = allRelatedSymbolicExprVector.size();
 				remainingExprVarName.erase(it);
 				remainingExpr.erase(itt);
 				remainingEvent.erase(ittt);
-				--ie;
 			} else {
 				++it;
 				++itt;
+				++ittt;
 			}
 		}
 	}
@@ -538,7 +584,8 @@ void DealWithSymbolicExpr::filterUseless(Trace* trace) {
 
 }
 
-bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::string>* relatedSymbolicExpr, Event* event){
+bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::string>* relatedSymbolicExpr,
+		unsigned eventIdPre, unsigned eventIdPost){
 	bool branch = false;
 	std::set<std::string> &RelatedSymbolicExpr = trace->RelatedSymbolicExpr;
 	RelatedSymbolicExpr.clear();
@@ -553,14 +600,18 @@ bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::stri
 
 	std::string varName;
 	std::map<std::string, std::set<std::string>* > &varRelatedSymbolicExpr = trace->varRelatedSymbolicExpr;
-	for (std::set<std::string>::iterator nit = RelatedSymbolicExpr.begin();
-			nit != RelatedSymbolicExpr.end(); ++nit) {
-		varName = *nit;
+	std::vector<std::string> RelatedSymbolicExprVector;
+	addExprToVector(relatedSymbolicExpr, RelatedSymbolicExprVector);
+	unsigned size = RelatedSymbolicExprVector.size();
+	for (unsigned i = 0; i < size; i++) {
+		varName = RelatedSymbolicExprVector[i];
 #if DEBUG
 		std::cerr << "\n varName : " <<  varName << std::endl;
 #endif
 		if (varRelatedSymbolicExpr.find(varName) != varRelatedSymbolicExpr.end()) {
 			addExprToSet(varRelatedSymbolicExpr[varName], &RelatedSymbolicExpr);
+			addExprToVector(varRelatedSymbolicExpr[varName], RelatedSymbolicExprVector);
+			size = RelatedSymbolicExprVector.size();
 		}
 	}
 #if DEBUG
@@ -581,7 +632,7 @@ bool DealWithSymbolicExpr::filterUselessWithSet(Trace* trace, std::set<std::stri
 	}
 	if(branch){
 		fillterTrace(trace, RelatedSymbolicExpr);
-		fillterTraceAfter(trace, event);
+		fillterTraceAfter(trace, eventIdPre, eventIdPost);
 		return true;
 	}else {
 		return false;

@@ -58,13 +58,14 @@
 #include "Encode.h"
 #include "Common.h"
 #include "KQuery2Z3.h"
+#include "Transfer.h"
 
 #define FORMULA_DEBUG 0
 #define BRANCH_INFO 1
 #define BUFFERSIZE 300
 #define BIT_WIDTH 64
 #define POINT_BIT_WIDTH 64
-#define RANGE 20000
+#define RANGE 60000
 #define INT_ARITHMETIC 1
 
 using namespace llvm;
@@ -77,10 +78,10 @@ struct Pair {
 	Event *event;
 };
 
-void Encode::buildAllFormula(Event* curr) {
+void Encode::buildAllFormula(unsigned eventIdPre) {
 	buildInitValueFormula(z3_solver);
 	buildPathCondition(z3_solver);
-	buildMemoryModelFormula(curr);
+	buildMemoryModelFormula(eventIdPre);
 	buildPartialOrderFormula();
 	buildReadWriteFormula(z3_solver);
 	buildSynchronizeFormula();
@@ -224,10 +225,12 @@ void Encode::check_if() {
 	unsigned sum = 0, num = 0;
 	unsigned size = ifFormula.size();
 	cerr << "Sum of branches: " << size << "\n";
-	for (unsigned i = 0; i < ifFormula.size(); i++) {
+	for (unsigned i = 0; i < size; i++) {
 		num++;
 #if BRANCH_INFO
-//		cerr << ifFormula[i].second << "\n";
+#if FORMULA_DEBUG
+		cerr << ifFormula[i].second << "\n";
+#endif
 		stringstream ss;
 		ss << "Trace" << trace->Id << "#"
 //				<< ifFormula[i].first->inst->info->file << "#"
@@ -241,11 +244,23 @@ void Encode::check_if() {
 		//create a backstracking point
 		z3_solver.push();
 		Event* curr = ifFormula[i].first;
+		unsigned eventIdPre;
+		if (i < 22) {
+			eventIdPre = 0;
+		} else {
+			eventIdPre = ifFormula[i-22].first->eventId;
+		}
+		unsigned eventIdPost;
+		if (i > size - 2) {
+			eventIdPost = trace->nextEventId;
+		} else {
+			eventIdPost = ifFormula[i+2].first->eventId;
+		}
 
 		struct timeval start, finish;
 		gettimeofday(&start, NULL);
 
-		bool branch = filter.filterUselessWithSet(trace, trace->brRelatedSymbolicExpr[i], curr);
+		bool branch = filter.filterUselessWithSet(trace, trace->brRelatedSymbolicExpr[i], eventIdPre, eventIdPost);
 
 		gettimeofday(&finish, NULL);
 		double cost = (double) (finish.tv_sec * 1000000UL + finish.tv_usec
@@ -295,7 +310,7 @@ void Encode::check_if() {
 		}
 
 		if(branch){
-			buildAllFormula(curr);
+			buildAllFormula(eventIdPre);
 
 			//添加读写的解
 			std::set<std::string> &RelatedSymbolicExpr = trace->RelatedSymbolicExpr;
@@ -304,7 +319,7 @@ void Encode::check_if() {
 			unsigned int totalRwExpr = rwFormula.size();
 			for (unsigned int j = 0; j < totalRwExpr; j++){
 				Event* temp = rwFormula[j].first;
-				if (temp->eventId + RANGE < curr->eventId) {
+				if (temp->eventId < eventIdPre) {
 					varName = filter.getVarName(rwSymbolicExpr[j]->getKid(1));
 					if (RelatedSymbolicExpr.find(varName) != RelatedSymbolicExpr.end()){
 
@@ -330,10 +345,10 @@ void Encode::check_if() {
 					continue;
 				}
 				Event* temp = ifFormula[j].first;
-				if (temp->eventId + RANGE < curr->eventId) {
+				if (temp->eventId < eventIdPre) {
 					//maybe not need
-//					z3_solver.add(ifFormula[j].second);
-				} else if (temp->eventId - RANGE > curr->eventId) {
+					z3_solver.add(ifFormula[j].second);
+				} else if (temp->eventId > eventIdPost) {
 
 				}else {
 					expr currIf = z3_ctx.int_const(curr->eventName.c_str());
@@ -376,7 +391,7 @@ void Encode::check_if() {
 				runtimeData->addScheduleSet(prefix);
 				runtimeData->satBranch++;
 				runtimeData->satCost += cost;
-#if FORMULA_DEBUG
+#if !FORMULA_DEBUG
 				showPrefixInfo(prefix, ifFormula[i].first);
 #endif
 			} else {
@@ -388,7 +403,7 @@ void Encode::check_if() {
 			if (result == z3::sat) {
 				sum++;
 				cerr << "Yes!\n";
-#if FORMULA_DEBUG
+#if !FORMULA_DEBUG
 				std::ofstream out_file(output.str().c_str(),std::ios_base::out|std::ios_base::app);
 				out_file << "!ifFormula[i].second : " << !ifFormula[i].second << "\n";
 				out_file <<"\n"<<z3_solver<<"\n";
@@ -903,7 +918,7 @@ void Encode::buildPathCondition(solver z3_solver_pc) {
 			z3::expr temp = storeFormula[i].second;
 			z3_solver_pc.add(temp);
 #if FORMULA_DEBUG
-		cerr << temp << "\n";
+		cerr << "storeFormula : " << temp << "\n";
 #endif
 		}
 	}
@@ -1011,8 +1026,10 @@ void Encode::buildAndTranslate() {
 		event = trace->usefulStoreEvent[i];
 		res = kq->getZ3Expr(trace->usefulStoreSymbolicExpr[i]);
 		storeFormula.push_back(make_pair(event, res));
-//		cerr << "constraint : " << trace->usefulStoreSymbolicExpr[i] << "\n";
-//		cerr << "storeFormula : " << res << "\n";
+#if FORMULA_DEBUG
+		cerr << "constraint : " << trace->usefulStoreSymbolicExpr[i] << "\n";
+		cerr << "Event id : " << event->eventId << " storeFormula : " << res << "\n";
+#endif
 	}
 
 //	buildAllFormula();
@@ -1161,7 +1178,7 @@ z3::sort Encode::llvmTy_to_z3Ty(const Type *typ) {
 #endif
 }        //
 
-void Encode::buildMemoryModelFormula(Event* curr) {
+void Encode::buildMemoryModelFormula(unsigned eventIdPre) {
 #if FORMULA_DEBUG
 	cerr << "\nMemoryModelFormula:\n";
 #endif
@@ -1217,13 +1234,19 @@ void Encode::buildMemoryModelFormula(Event* curr) {
 			expr postExpr = z3_ctx.int_const(post->eventName.c_str());
 			expr temp = (preExpr < postExpr);
 #if FORMULA_DEBUG
+			cerr << " pre inst : ";
+			pre->inst->inst->dump();
 			cerr << temp << "\n";
 #endif
 			z3_solver.add(temp);
 
-			if (pre->eventId < curr->eventId - RANGE) {
+			if (pre->eventId < eventIdPre) {
 				z3_solver.add(preExpr == z3_ctx.int_val(uniqueEvent));
+#if FORMULA_DEBUG
+			cerr << (preExpr == z3_ctx.int_val(uniqueEvent)) << "\n";
+#endif
 			}
+
 			//statics
 			formulaNum++;
 			uniqueEvent++;
@@ -1319,6 +1342,7 @@ void Encode::controlGranularity(int level) {
 				if (preInstType == NormalOp) {
 					curr->eventName = preEventName;
 				} else {
+					curr->eventName = "E" + Transfer::uint64toString(curr->eventId);
 					preEventName = curr->eventName;
 				}
 				preInstType = currInstType;
@@ -1329,6 +1353,7 @@ void Encode::controlGranularity(int level) {
 
 InstType Encode::getInstOpType(Event * event) {
 	if (event->usefulGlobal) {
+//	if (event->isGlobal) {
 		return GlobalVarOp;
 	}
 	Instruction *I = event->inst->inst;
