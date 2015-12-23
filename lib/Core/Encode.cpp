@@ -245,16 +245,16 @@ void Encode::check_if() {
 		z3_solver.push();
 		Event* curr = ifFormula[i].first;
 		unsigned eventIdPre;
-		if (i < 22) {
+		if (i < 1) {
 			eventIdPre = 0;
 		} else {
-			eventIdPre = ifFormula[i-22].first->eventId;
+			eventIdPre = ifFormula[i-1].first->eventId;
 		}
 		unsigned eventIdPost;
 		if (i > size - 2) {
 			eventIdPost = trace->nextEventId;
 		} else {
-			eventIdPost = ifFormula[i+2].first->eventId;
+			eventIdPost = ifFormula[i+1].first->eventId;
 		}
 
 		struct timeval start, finish;
