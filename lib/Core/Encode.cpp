@@ -245,13 +245,13 @@ void Encode::check_if() {
 		z3_solver.push();
 		Event* curr = ifFormula[i].first;
 		unsigned eventIdPre;
-		if (i < 1) {
+		if (i < 2) {
 			eventIdPre = 0;
 		} else {
-			eventIdPre = ifFormula[i-1].first->eventId;
+			eventIdPre = ifFormula[i-2].first->eventId;
 		}
 		unsigned eventIdPost;
-		if (i > size - 2) {
+		if (i > size - 1 - 1) {
 			eventIdPost = trace->nextEventId;
 		} else {
 			eventIdPost = ifFormula[i+1].first->eventId;

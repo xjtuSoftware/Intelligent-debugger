@@ -171,7 +171,11 @@ z3::expr KQuery2Z3::eachExprToZ3(ref<Expr> &ele) {
 		if (re->getWidth() == Expr::Bool) {
 			res = z3_ctx.bool_const(varName.c_str());
 		} else {
+#if INT_ARITHMETIC
+			res = z3_ctx.constant(varName.c_str(), z3_ctx.int_sort());
+#else
 			res = z3_ctx.constant(varName.c_str(), z3_ctx.bv_sort(BIT_WIDTH));
+#endif
 		}
 		return res;
 	}
@@ -886,6 +890,7 @@ z3::expr KQuery2Z3::eachExprToZ3(ref<Expr> &ele) {
 
 	}
 	std::cerr << "end of switch\n";
+	return res;
 }
 
 void KQuery2Z3::printZ3AndKqueryExpr() {
