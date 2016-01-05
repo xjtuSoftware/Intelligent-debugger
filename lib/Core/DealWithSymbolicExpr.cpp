@@ -327,7 +327,8 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, unsigned eventIdPre, 
 				(*ie)->unlockEvent->usefulGlobal = false;
 				nit->second.erase(ie);
 			} else {
-
+				(*ie)->lockEvent->usefulGlobal = true;
+				(*ie)->unlockEvent->usefulGlobal = true;
 			}
 		}
 	}

@@ -262,7 +262,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 				}
 				item->globalVarFullName = varFullName;
 				item->varName = varName;
-				trace->all_break.push_back(item);
+//				trace->all_break.push_back(item);
 			}
 		} else if (f->getName().str() == "pthread_join") {
 			CallInst* calli = dyn_cast<CallInst>(inst);
@@ -274,7 +274,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 					paramType->getBitWidth());
 			trace->insertThreadCreateOrJoin(make_pair(item, joinedThreadId),
 					false);
-			trace->all_break.push_back(item);
+//			trace->all_break.push_back(item);
 		} else if (f->getName().str() == "pthread_cond_wait") {
 			ref<Expr> param;
 			ObjectPair op;

@@ -203,7 +203,7 @@ void Encode::buildAllFormula(unsigned eventIdPre) {
 
 //true :: assert can't be violated. false :: assert can be violated.
 bool Encode::verify() {
-#if FORMULA_DEBUG
+#if !FORMULA_DEBUG
 	showInitTrace();
 #endif
 	cerr << "\nVerifying this trace......\n";
@@ -339,8 +339,9 @@ void Encode::check_if() {
 	unsigned size = ifFormula.size();
 	cerr << "Sum of branches: " << size << "\n";
 	std::vector<Event *> &all_break = trace->all_break;
-	unsigned breakSize = all_break.size();
 	unsigned breakCount = 0;
+	unsigned eventIdPre = 0;
+	unsigned eventIdPost = all_break[0]->eventId;
 	for (unsigned i = 0; i < size; i++) {
 		num++;
 #if BRANCH_INFO
@@ -360,16 +361,18 @@ void Encode::check_if() {
 		//create a backstracking point
 		z3_solver.push();
 		Event* curr = ifFormula[i].first;
-		if (curr->eventId < all_break[0]->eventId) {
-			cerr << "NNNo!\n";
-			continue;
-		} else {
+//		if (curr->eventId < all_break[0]->eventId) {
+//			cerr << "NNNo!\n";
+//			continue;
+//		} else {
 			while (curr->eventId > all_break[breakCount + 1]->eventId) {
 				breakCount ++;
+				eventIdPre = eventIdPost;
+				eventIdPost = all_break[breakCount+1]->eventId;
 			}
-		}
-		unsigned eventIdPre = all_break[breakCount]->eventId;
-		unsigned eventIdPost = all_break[breakCount+1]->eventId;
+//		}
+		eventIdPost = all_break[breakCount+1]->eventId;
+		cerr << "\n eventIdPre : " << eventIdPre << " eventIdPost : " << eventIdPost << "\n";
 
 		struct timeval start, finish;
 		gettimeofday(&start, NULL);
@@ -476,6 +479,11 @@ void Encode::check_if() {
 					z3_solver.add(constraint);
 				}
 			}
+
+			std::ofstream zout_file(ss.str().c_str(),std::ios_base::out|std::ios_base::app);
+			zout_file << "!ifFormula[i].second : " << !ifFormula[i].second << "\n";
+			zout_file <<"\n"<<z3_solver<<"\n";
+
 			//statics
 			formulaNum = formulaNum + ifFormula.size() - 1;
 			//solving
@@ -1237,7 +1245,7 @@ void Encode::buildMemoryModelFormula(unsigned eventIdPre) {
 			expr preExpr = z3_ctx.int_const(pre->eventName.c_str());
 			expr postExpr = z3_ctx.int_const(post->eventName.c_str());
 			expr temp = (preExpr < postExpr);
-#if FORMULA_DEBUG
+#if !FORMULA_DEBUG
 			cerr << " pre inst : ";
 			pre->inst->inst->dump();
 			cerr << temp << "\n";
