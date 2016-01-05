@@ -262,6 +262,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 				}
 				item->globalVarFullName = varFullName;
 				item->varName = varName;
+				trace->all_break.push_back(item);
 			}
 		} else if (f->getName().str() == "pthread_join") {
 			CallInst* calli = dyn_cast<CallInst>(inst);
@@ -273,6 +274,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 					paramType->getBitWidth());
 			trace->insertThreadCreateOrJoin(make_pair(item, joinedThreadId),
 					false);
+			trace->all_break.push_back(item);
 		} else if (f->getName().str() == "pthread_cond_wait") {
 			ref<Expr> param;
 			ObjectPair op;
@@ -312,6 +314,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 				string condName = createVarName(mo->id, param, executor->isGlobalMO(mo));
 				trace->insertWait(condName, item, lock);
 				item->condName = condName;
+				trace->all_break.push_back(item);
 			} else {
 				assert(0 && "cond not exist");
 			}
@@ -329,6 +332,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 				string condName = createVarName(mo->id, param, executor->isGlobalMO(mo));
 				trace->insertSignal(condName, item);
 				item->condName = condName;
+				trace->all_break.push_back(item);
 			} else {
 				assert(0 && "cond not exist");
 			}
@@ -346,6 +350,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 				string condName = createVarName(mo->id, param, executor->isGlobalMO(mo));
 				trace->insertSignal(condName, item);
 				item->condName = condName;
+				trace->all_break.push_back(item);
 			} else {
 				assert(0 && "cond not exist");
 			}
@@ -401,6 +406,7 @@ void PSOListener::executeInstruction(ExecutionState &state, KInstruction *ki) {
 			if (isReleased) {
 				barrierInfo->addReleaseItem();
 			}
+			trace->all_break.push_back(item);
 		} else if (f->getName().str() == "pthread_barrier_init") {
 			ref<Expr> param = executor->eval(ki, 1, thread).value;
 			ConstantExpr* barrierAddressExpr = dyn_cast<ConstantExpr>(param);

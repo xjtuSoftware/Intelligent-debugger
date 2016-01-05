@@ -129,10 +129,10 @@ public:
 
 	//锁操作集合，以lock/unlock为对收集-->生成同步语义约束
 	std::map<std::string, std::vector<LockPair *> > all_lock_unlock; //key--mutex（锁名，一个地址就ok，每个锁全局必唯一）, value--the whole lock/unlock pairs with respect to one mutex
+	std::map<std::string, std::vector<LockPair *> > all_lock_unlock_useful;
 	//条件变量操作
 	std::map<std::string, std::vector<Wait_Lock *> > all_wait;//key--condition 变量标识, value--the whole wait events that wait this conditional var
 	std::map<std::string, std::vector<Event *> > all_signal;//key--condition 变量标识, value--the whole signal events that signal this conditional var
-
 	//barrier操作
 	std::map<std::string, std::vector<Event *> > all_barrier;//key--barrier地址#release次数, value--the whole wait events that wait this barrier var
 
@@ -143,6 +143,9 @@ public:
 	std::map<std::string, llvm::Constant*> global_variable_final;
 	//输出语句printf产生的变量值
 	std::map<std::string, llvm::Constant*> printf_variable_value;//key--full name of var
+
+	//include pthread_create, cond_wait, cond_signal, cond_broadcast, pthread_join, etc
+	std::vector<Event *> all_break;//use to break
 
 };
 

@@ -78,6 +78,119 @@ struct Pair {
 	Event *event;
 };
 
+void Encode::buildAndTranslate() {
+	Trace* trace = runtimeData->getCurrentTrace();
+	filter.filterUseless(trace);
+#if DEBUGSYMBOLIC
+	cerr << "all constraint :" << std::endl;
+	std::cerr << "storeSymbolicExpr = " << trace->storeSymbolicExpr.size()
+	<< std::endl;
+	for (std::vector<ref<Expr> >::iterator it = trace->storeSymbolicExpr.begin(),
+			ie = trace->storeSymbolicExpr.end(); it != ie; ++it) {
+		it->get()->dump();
+	}
+	std::cerr << "brSymbolicExpr = " << trace->brSymbolicExpr.size()
+	<< std::endl;
+	for (std::vector<ref<Expr> >::iterator it = trace->brSymbolicExpr.begin(),
+			ie = trace->brSymbolicExpr.end(); it != ie; ++it) {
+		it->get()->dump();
+	}
+	std::cerr << "assertSymbolicExpr = " << trace->assertSymbolicExpr.size()
+	<< std::endl;
+
+	for (std::vector<ref<Expr> >::iterator it = trace->assertSymbolicExpr.begin(),
+			ie = trace->assertSymbolicExpr.end(); it != ie; ++it) {
+		it->get()->dump();
+	}
+	std::cerr << "kQueryExpr = " << trace->kQueryExpr.size()
+	<< std::endl;
+	for (std::vector<ref<Expr> >::iterator it = trace->kQueryExpr.begin(),
+			ie = trace->kQueryExpr.end(); it != ie; ++it) {
+		it->get()->dump();
+	}
+#endif
+	unsigned brGlobal = 0;
+	runtimeData->getCurrentTrace()->traceType = Trace::UNIQUE;
+	std::map<std::string, std::vector<Event *> > &writeSet = trace->writeSet;
+	std::map<std::string, std::vector<Event *> > &readSet = trace->readSet;
+	for (std::map<std::string, std::vector<Event *> >::iterator nit =
+			readSet.begin(), nie = readSet.end(); nit != nie; ++nit) {
+		brGlobal += nit->second.size();
+	}
+	for (std::map<std::string, std::vector<Event *> >::iterator nit =
+			writeSet.begin(), nie = writeSet.end(); nit != nie; ++nit) {
+		std::string varName = nit->first;
+		if (trace->readSet.find(varName) == trace->readSet.end()) {
+			brGlobal += nit->second.size();
+		}
+	}
+	runtimeData->brGlobal += brGlobal;
+
+	KQuery2Z3 * kq = new KQuery2Z3(z3_ctx);
+
+	unsigned int totalAssertEvent = trace->assertEvent.size();
+	unsigned int totalAssertSymbolic = trace->assertSymbolicExpr.size();
+	assert( totalAssertEvent == totalAssertSymbolic
+					&& "the number of brEvent is not equal to brSymbolic");
+	Event * event = NULL;
+	z3::expr res = z3_ctx.bool_val(true);
+	for (unsigned int i = 0; i < totalAssertEvent; i++) {
+		event = trace->assertEvent[i];
+//		cerr << "asert : " << trace->assertSymbolicExpr[i] <<"\n";
+		res = kq->getZ3Expr(trace->assertSymbolicExpr[i]);
+//		string fileName = event->inst->info->file;
+		unsigned line = event->inst->info->line;
+		if (line != 0)
+			assertFormula.push_back(make_pair(event, res));
+//		else
+//			ifFormula.push_back(make_pair(event, res));
+
+	}
+
+	unsigned int totalBrEvent = trace->brEvent.size();
+	for (unsigned int i = 0; i < totalBrEvent; i++) {
+		event = trace->brEvent[i];
+		res = kq->getZ3Expr(trace->brSymbolicExpr[i]);
+		if(event->isConditionIns == true){
+//			cerr << "br : " << trace->brSymbolicExpr[i] <<"\n";
+//			event->inst->inst->dump();
+//			string fileName = event->inst->info->file;
+//			unsigned line = event->inst->info->line;
+//			cerr << "fileName : " << fileName <<" line : " << line << "\n";
+			ifFormula.push_back(make_pair(event, res));
+//			cerr << "event name : " << ifFormula[i].first->eventName << "\n";
+//			cerr << "constraint : " << ifFormula[i].second << "\n";
+		}else if(event->isConditionIns == false){
+			z3_solver.add(res);
+		}
+	}
+
+
+	unsigned int totalRwExpr = trace->rwSymbolicExpr.size();
+	for (unsigned int i = 0; i < totalRwExpr; i++) {
+		event = trace->rwEvent[i];
+		res = kq->getZ3Expr(trace->rwSymbolicExpr[i]);
+		rwFormula.push_back(make_pair(event, res));
+//		cerr << "rwSymbolicExpr : " << res << "\n";
+	}
+
+	unsigned int totalStoreExpr = trace->usefulStoreSymbolicExpr.size();
+	for (unsigned int i = 0; i < totalStoreExpr; i++) {
+		event = trace->usefulStoreEvent[i];
+		res = kq->getZ3Expr(trace->usefulStoreSymbolicExpr[i]);
+		storeFormula.push_back(make_pair(event, res));
+#if FORMULA_DEBUG
+		cerr << "constraint : " << trace->usefulStoreSymbolicExpr[i] << "\n";
+		cerr << "Event id : " << event->eventId << " storeFormula : " << res << "\n";
+#endif
+	}
+
+	trace->all_break.push_back(trace->path.back());
+
+
+//	buildAllFormula();
+}
+
 void Encode::buildAllFormula(unsigned eventIdPre) {
 	buildInitValueFormula(z3_solver);
 	buildPathCondition(z3_solver);
@@ -225,6 +338,9 @@ void Encode::check_if() {
 	unsigned sum = 0, num = 0;
 	unsigned size = ifFormula.size();
 	cerr << "Sum of branches: " << size << "\n";
+	std::vector<Event *> &all_break = trace->all_break;
+	unsigned breakSize = all_break.size();
+	unsigned breakCount = 0;
 	for (unsigned i = 0; i < size; i++) {
 		num++;
 #if BRANCH_INFO
@@ -244,18 +360,16 @@ void Encode::check_if() {
 		//create a backstracking point
 		z3_solver.push();
 		Event* curr = ifFormula[i].first;
-		unsigned eventIdPre;
-		if (i < 2) {
-			eventIdPre = 0;
+		if (curr->eventId < all_break[0]->eventId) {
+			cerr << "NNNo!\n";
+			break;
 		} else {
-			eventIdPre = ifFormula[i-2].first->eventId;
+			while (curr->eventId > all_break[breakCount + 1]->eventId) {
+				breakCount ++;
+			}
 		}
-		unsigned eventIdPost;
-		if (i > size - 1 - 1) {
-			eventIdPost = trace->nextEventId;
-		} else {
-			eventIdPost = ifFormula[i+1].first->eventId;
-		}
+		unsigned eventIdPre = all_break[breakCount]->eventId;
+		unsigned eventIdPost = all_break[breakCount+1]->eventId;
 
 		struct timeval start, finish;
 		gettimeofday(&start, NULL);
@@ -923,116 +1037,6 @@ void Encode::buildPathCondition(solver z3_solver_pc) {
 		}
 	}
 
-}
-
-void Encode::buildAndTranslate() {
-	Trace* trace = runtimeData->getCurrentTrace();
-	filter.filterUseless(trace);
-#if DEBUGSYMBOLIC
-	cerr << "all constraint :" << std::endl;
-	std::cerr << "storeSymbolicExpr = " << trace->storeSymbolicExpr.size()
-	<< std::endl;
-	for (std::vector<ref<Expr> >::iterator it = trace->storeSymbolicExpr.begin(),
-			ie = trace->storeSymbolicExpr.end(); it != ie; ++it) {
-		it->get()->dump();
-	}
-	std::cerr << "brSymbolicExpr = " << trace->brSymbolicExpr.size()
-	<< std::endl;
-	for (std::vector<ref<Expr> >::iterator it = trace->brSymbolicExpr.begin(),
-			ie = trace->brSymbolicExpr.end(); it != ie; ++it) {
-		it->get()->dump();
-	}
-	std::cerr << "assertSymbolicExpr = " << trace->assertSymbolicExpr.size()
-	<< std::endl;
-
-	for (std::vector<ref<Expr> >::iterator it = trace->assertSymbolicExpr.begin(),
-			ie = trace->assertSymbolicExpr.end(); it != ie; ++it) {
-		it->get()->dump();
-	}
-	std::cerr << "kQueryExpr = " << trace->kQueryExpr.size()
-	<< std::endl;
-	for (std::vector<ref<Expr> >::iterator it = trace->kQueryExpr.begin(),
-			ie = trace->kQueryExpr.end(); it != ie; ++it) {
-		it->get()->dump();
-	}
-#endif
-	unsigned brGlobal = 0;
-	runtimeData->getCurrentTrace()->traceType = Trace::UNIQUE;
-	std::map<std::string, std::vector<Event *> > &writeSet = trace->writeSet;
-	std::map<std::string, std::vector<Event *> > &readSet = trace->readSet;
-	for (std::map<std::string, std::vector<Event *> >::iterator nit =
-			readSet.begin(), nie = readSet.end(); nit != nie; ++nit) {
-		brGlobal += nit->second.size();
-	}
-	for (std::map<std::string, std::vector<Event *> >::iterator nit =
-			writeSet.begin(), nie = writeSet.end(); nit != nie; ++nit) {
-		std::string varName = nit->first;
-		if (trace->readSet.find(varName) == trace->readSet.end()) {
-			brGlobal += nit->second.size();
-		}
-	}
-	runtimeData->brGlobal += brGlobal;
-
-	KQuery2Z3 * kq = new KQuery2Z3(z3_ctx);
-
-	unsigned int totalAssertEvent = trace->assertEvent.size();
-	unsigned int totalAssertSymbolic = trace->assertSymbolicExpr.size();
-	assert( totalAssertEvent == totalAssertSymbolic
-					&& "the number of brEvent is not equal to brSymbolic");
-	Event * event = NULL;
-	z3::expr res = z3_ctx.bool_val(true);
-	for (unsigned int i = 0; i < totalAssertEvent; i++) {
-		event = trace->assertEvent[i];
-//		cerr << "asert : " << trace->assertSymbolicExpr[i] <<"\n";
-		res = kq->getZ3Expr(trace->assertSymbolicExpr[i]);
-//		string fileName = event->inst->info->file;
-		unsigned line = event->inst->info->line;
-		if (line != 0)
-			assertFormula.push_back(make_pair(event, res));
-//		else
-//			ifFormula.push_back(make_pair(event, res));
-
-	}
-
-	unsigned int totalBrEvent = trace->brEvent.size();
-	for (unsigned int i = 0; i < totalBrEvent; i++) {
-		event = trace->brEvent[i];
-		res = kq->getZ3Expr(trace->brSymbolicExpr[i]);
-		if(event->isConditionIns == true){
-//			cerr << "br : " << trace->brSymbolicExpr[i] <<"\n";
-//			event->inst->inst->dump();
-//			string fileName = event->inst->info->file;
-//			unsigned line = event->inst->info->line;
-//			cerr << "fileName : " << fileName <<" line : " << line << "\n";
-			ifFormula.push_back(make_pair(event, res));
-//			cerr << "event name : " << ifFormula[i].first->eventName << "\n";
-//			cerr << "constraint : " << ifFormula[i].second << "\n";
-		}else if(event->isConditionIns == false){
-			z3_solver.add(res);
-		}
-	}
-
-
-	unsigned int totalRwExpr = trace->rwSymbolicExpr.size();
-	for (unsigned int i = 0; i < totalRwExpr; i++) {
-		event = trace->rwEvent[i];
-		res = kq->getZ3Expr(trace->rwSymbolicExpr[i]);
-		rwFormula.push_back(make_pair(event, res));
-//		cerr << "rwSymbolicExpr : " << res << "\n";
-	}
-
-	unsigned int totalStoreExpr = trace->usefulStoreSymbolicExpr.size();
-	for (unsigned int i = 0; i < totalStoreExpr; i++) {
-		event = trace->usefulStoreEvent[i];
-		res = kq->getZ3Expr(trace->usefulStoreSymbolicExpr[i]);
-		storeFormula.push_back(make_pair(event, res));
-#if FORMULA_DEBUG
-		cerr << "constraint : " << trace->usefulStoreSymbolicExpr[i] << "\n";
-		cerr << "Event id : " << event->eventId << " storeFormula : " << res << "\n";
-#endif
-	}
-
-//	buildAllFormula();
 }
 
 expr Encode::buildExprForConstantValue(Value *V, bool isLeft,
