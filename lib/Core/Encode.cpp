@@ -362,7 +362,7 @@ void Encode::check_if() {
 		Event* curr = ifFormula[i].first;
 		if (curr->eventId < all_break[0]->eventId) {
 			cerr << "NNNo!\n";
-			break;
+			continue;
 		} else {
 			while (curr->eventId > all_break[breakCount + 1]->eventId) {
 				breakCount ++;
@@ -1689,133 +1689,133 @@ void Encode::buildSynchronizeFormula() {
 		}
 	}
 
-//new method
-//wait/signal
-#if FORMULA_DEBUG
-	cerr << "The sum of wait:" << trace->all_wait.size() << "\n";
-	cerr << "The sum of signal:" << trace->all_signal.size() << "\n";
-#endif
-	map<string, vector<Wait_Lock *> >::iterator it_wait =
-			trace->all_wait.begin();
-	map<string, vector<Event *> >::iterator it_signal;
-
-	for (; it_wait != trace->all_wait.end(); it_wait++) {
-		it_signal = trace->all_signal.find(it_wait->first);
-		if (it_signal == trace->all_signal.end())
-			assert(0 && "Something wrong with wait/signal data collection!");
-		vector<Wait_Lock *> waitSet = it_wait->second;
-		string currCond = it_wait->first;
-		for (unsigned i = 0; i < waitSet.size(); i++) {
-			vector<expr> possibleMap;
-			vector<expr> possibleValue;
-			expr wait = z3_ctx.int_const(waitSet[i]->wait->eventName.c_str());
-			expr lock_wait = z3_ctx.int_const(
-					waitSet[i]->lock_by_wait->eventName.c_str());
-			vector<Event *> signalSet = it_signal->second;
-			for (unsigned j = 0; j < signalSet.size(); j++) {
-				if (waitSet[i]->wait->threadId == signalSet[j]->threadId)
-					continue;
-				expr signal = z3_ctx.int_const(signalSet[j]->eventName.c_str());
-				//Event_wait < Event_signal < lock_wait
-				expr exprs_0 = wait < signal && signal < lock_wait;
-
-				//m_w_s = 1
-				stringstream ss;
-				ss << currCond << "_" << waitSet[i]->wait->eventName << "_"
-						<< signalSet[j]->eventName;
-				expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
-				expr exprs_1 = (map_wait_signal == 1);
-				//range: p_w_s = 0 or p_w_s = 1
-				expr exprs_2 = map_wait_signal >= 0 && map_wait_signal <= 1;
-
-				possibleMap.push_back(exprs_0 && exprs_1);
-				possibleValue.push_back(exprs_2);
-				//statics
-				formulaNum += 3;
-			}
-			expr one_wait = makeExprsOr(possibleMap);
-			expr wait_value = makeExprsAnd(possibleValue);
-#if FORMULA_DEBUG
-			cerr << one_wait << "\n";
-#endif
-			z3_solver.add(one_wait);
-			z3_solver.add(wait_value);
-		}
-	}
-
-	//Sigma m_w_s <= 1
-	it_signal = trace->all_signal.begin();
-	for (; it_signal != trace->all_signal.end(); it_signal++) {
-		it_wait = trace->all_wait.find(it_signal->first);
-		if (it_wait == trace->all_wait.end())
-			continue;
-		vector<Event *> signalSet = it_signal->second;
-		string currCond = it_signal->first;
-		for (unsigned i = 0; i < signalSet.size(); i++) {
-			vector<Wait_Lock *> waitSet = it_wait->second;
-			string currSignalName = signalSet[i]->eventName;
-			vector<expr> mapLabel;
-			for (unsigned j = 0; j < waitSet.size(); j++) {
-				stringstream ss;
-				ss << currCond << "_" << waitSet[j]->wait->eventName << "_"
-						<< currSignalName;
-				expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
-				mapLabel.push_back(map_wait_signal);
-			}
-			expr sum = makeExprsSum(mapLabel);
-			expr relation = (sum <= 1);
-			z3_solver.add(relation);
-		}
-	}
-
-	//Sigma m_s_w >= 1
-	it_wait = trace->all_wait.begin();
-	for (; it_wait != trace->all_wait.end(); it_wait++) {
-		it_signal = trace->all_signal.find(it_wait->first);
-		if (it_signal == trace->all_signal.end())
-			continue;
-		vector<Wait_Lock *> waitSet = it_wait->second;
-		string currCond = it_wait->first;
-		for (unsigned i = 0; i < waitSet.size(); i++) {
-			vector<Event *> signalSet = it_signal->second;
-			string currWaitName = waitSet[i]->wait->eventName;
-			vector<expr> mapLabel;
-			for (unsigned j = 0; j < signalSet.size(); j++) {
-				stringstream ss;
-				ss << currCond << "_" << currWaitName << "_"
-						<< signalSet[j]->eventName;
-				expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
-				mapLabel.push_back(map_wait_signal);
-			}
-			expr sum = makeExprsSum(mapLabel);
-			expr relation = (sum >= 1);
-			z3_solver.add(relation);
-		}
-	}
-
-	//wipe off the w/s matching in the same thread
-	it_wait = trace->all_wait.begin();
-	for (; it_wait != trace->all_wait.end(); it_wait++) {
-		it_signal = trace->all_signal.find(it_wait->first);
-		if (it_signal == trace->all_signal.end())
-			continue;
-		vector<Wait_Lock *> waitSet = it_wait->second;
-		string currCond = it_wait->first;
-		for (unsigned i = 0; i < waitSet.size(); i++) {
-			vector<Event *> signalSet = it_signal->second;
-			string currWaitName = waitSet[i]->wait->eventName;
-			unsigned currThreadId = waitSet[i]->wait->threadId;
-			for (unsigned j = 0; j < signalSet.size(); j++) {
-				if (currThreadId == signalSet[j]->threadId) {
-					stringstream ss;
-					ss << currCond << "_" << currWaitName << "_"
-							<< signalSet[j]->eventName;
-					expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
-					z3_solver.add(map_wait_signal == 0);
-				}
-			}
-		}
-	}
+////new method
+////wait/signal
+//#if FORMULA_DEBUG
+//	cerr << "The sum of wait:" << trace->all_wait.size() << "\n";
+//	cerr << "The sum of signal:" << trace->all_signal.size() << "\n";
+//#endif
+//	map<string, vector<Wait_Lock *> >::iterator it_wait =
+//			trace->all_wait.begin();
+//	map<string, vector<Event *> >::iterator it_signal;
+//
+//	for (; it_wait != trace->all_wait.end(); it_wait++) {
+//		it_signal = trace->all_signal.find(it_wait->first);
+//		if (it_signal == trace->all_signal.end())
+//			assert(0 && "Something wrong with wait/signal data collection!");
+//		vector<Wait_Lock *> waitSet = it_wait->second;
+//		string currCond = it_wait->first;
+//		for (unsigned i = 0; i < waitSet.size(); i++) {
+//			vector<expr> possibleMap;
+//			vector<expr> possibleValue;
+//			expr wait = z3_ctx.int_const(waitSet[i]->wait->eventName.c_str());
+//			expr lock_wait = z3_ctx.int_const(
+//					waitSet[i]->lock_by_wait->eventName.c_str());
+//			vector<Event *> signalSet = it_signal->second;
+//			for (unsigned j = 0; j < signalSet.size(); j++) {
+//				if (waitSet[i]->wait->threadId == signalSet[j]->threadId)
+//					continue;
+//				expr signal = z3_ctx.int_const(signalSet[j]->eventName.c_str());
+//				//Event_wait < Event_signal < lock_wait
+//				expr exprs_0 = wait < signal && signal < lock_wait;
+//
+//				//m_w_s = 1
+//				stringstream ss;
+//				ss << currCond << "_" << waitSet[i]->wait->eventName << "_"
+//						<< signalSet[j]->eventName;
+//				expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
+//				expr exprs_1 = (map_wait_signal == 1);
+//				//range: p_w_s = 0 or p_w_s = 1
+//				expr exprs_2 = map_wait_signal >= 0 && map_wait_signal <= 1;
+//
+//				possibleMap.push_back(exprs_0 && exprs_1);
+//				possibleValue.push_back(exprs_2);
+//				//statics
+//				formulaNum += 3;
+//			}
+//			expr one_wait = makeExprsOr(possibleMap);
+//			expr wait_value = makeExprsAnd(possibleValue);
+//#if FORMULA_DEBUG
+//			cerr << one_wait << "\n";
+//#endif
+//			z3_solver.add(one_wait);
+//			z3_solver.add(wait_value);
+//		}
+//	}
+//
+//	//Sigma m_w_s <= 1
+//	it_signal = trace->all_signal.begin();
+//	for (; it_signal != trace->all_signal.end(); it_signal++) {
+//		it_wait = trace->all_wait.find(it_signal->first);
+//		if (it_wait == trace->all_wait.end())
+//			continue;
+//		vector<Event *> signalSet = it_signal->second;
+//		string currCond = it_signal->first;
+//		for (unsigned i = 0; i < signalSet.size(); i++) {
+//			vector<Wait_Lock *> waitSet = it_wait->second;
+//			string currSignalName = signalSet[i]->eventName;
+//			vector<expr> mapLabel;
+//			for (unsigned j = 0; j < waitSet.size(); j++) {
+//				stringstream ss;
+//				ss << currCond << "_" << waitSet[j]->wait->eventName << "_"
+//						<< currSignalName;
+//				expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
+//				mapLabel.push_back(map_wait_signal);
+//			}
+//			expr sum = makeExprsSum(mapLabel);
+//			expr relation = (sum <= 1);
+//			z3_solver.add(relation);
+//		}
+//	}
+//
+//	//Sigma m_s_w >= 1
+//	it_wait = trace->all_wait.begin();
+//	for (; it_wait != trace->all_wait.end(); it_wait++) {
+//		it_signal = trace->all_signal.find(it_wait->first);
+//		if (it_signal == trace->all_signal.end())
+//			continue;
+//		vector<Wait_Lock *> waitSet = it_wait->second;
+//		string currCond = it_wait->first;
+//		for (unsigned i = 0; i < waitSet.size(); i++) {
+//			vector<Event *> signalSet = it_signal->second;
+//			string currWaitName = waitSet[i]->wait->eventName;
+//			vector<expr> mapLabel;
+//			for (unsigned j = 0; j < signalSet.size(); j++) {
+//				stringstream ss;
+//				ss << currCond << "_" << currWaitName << "_"
+//						<< signalSet[j]->eventName;
+//				expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
+//				mapLabel.push_back(map_wait_signal);
+//			}
+//			expr sum = makeExprsSum(mapLabel);
+//			expr relation = (sum >= 1);
+//			z3_solver.add(relation);
+//		}
+//	}
+//
+//	//wipe off the w/s matching in the same thread
+//	it_wait = trace->all_wait.begin();
+//	for (; it_wait != trace->all_wait.end(); it_wait++) {
+//		it_signal = trace->all_signal.find(it_wait->first);
+//		if (it_signal == trace->all_signal.end())
+//			continue;
+//		vector<Wait_Lock *> waitSet = it_wait->second;
+//		string currCond = it_wait->first;
+//		for (unsigned i = 0; i < waitSet.size(); i++) {
+//			vector<Event *> signalSet = it_signal->second;
+//			string currWaitName = waitSet[i]->wait->eventName;
+//			unsigned currThreadId = waitSet[i]->wait->threadId;
+//			for (unsigned j = 0; j < signalSet.size(); j++) {
+//				if (currThreadId == signalSet[j]->threadId) {
+//					stringstream ss;
+//					ss << currCond << "_" << currWaitName << "_"
+//							<< signalSet[j]->eventName;
+//					expr map_wait_signal = z3_ctx.int_const(ss.str().c_str());
+//					z3_solver.add(map_wait_signal == 0);
+//				}
+//			}
+//		}
+//	}
 
 //barrier
 #if FORMULA_DEBUG

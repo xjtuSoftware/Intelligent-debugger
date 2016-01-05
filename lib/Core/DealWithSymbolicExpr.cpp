@@ -129,11 +129,7 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 	for (std::vector<ref<Expr> >::iterator it = usefulStoreSymbolicExpr.begin(), ie =
 			usefulStoreSymbolicExpr.end(); it != ie; ++it) {
 		varName = getVarName(it->get()->getKid(1));
-		if (RelatedSymbolicExpr.find(varName) != RelatedSymbolicExpr.end()) {
 			usefulExpr.push_back(true);
-		} else {
-			usefulExpr.push_back(false);
-		}
 	}
 
 	//readSet
@@ -142,10 +138,7 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 	usefulReadSet.clear();
 	for (std::map<std::string, std::vector<Event *> >::iterator nit =
 			readSet.begin(), nie = readSet.end(); nit != nie; ++nit) {
-		varName = nit->first;
-		if (RelatedSymbolicExpr.find(varName) != RelatedSymbolicExpr.end()) {
 			usefulReadSet.insert(*nit);
-		}
 	}
 
 	//writeSet
@@ -154,10 +147,7 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 	usefulWriteSet.clear();
 	for (std::map<std::string, std::vector<Event *> >::iterator nit =
 			writeSet.begin(), nie = writeSet.end(); nit != nie; ++nit) {
-		varName = nit->first;
-		if (RelatedSymbolicExpr.find(varName) != RelatedSymbolicExpr.end()) {
 			usefulWriteSet.insert(*nit);
-		}
 	}
 
 	//global_variable_initializer
@@ -166,24 +156,42 @@ void DealWithSymbolicExpr::fillterTrace(Trace* trace, std::set<std::string> Rela
 	useful_global_variable_initializer.clear();
 	for (std::map<std::string, llvm::Constant*>::iterator nit =
 			global_variable_initializer.begin(), nie = global_variable_initializer.end(); nit != nie; ++nit) {
-		varName = nit->first;
-		if (RelatedSymbolicExpr.find(varName) != RelatedSymbolicExpr.end()) {
 			useful_global_variable_initializer.insert(*nit);
-		}
 	}
 
 	//event
 	for (std::vector<Event*>::iterator currentEvent = trace->path.begin(), endEvent = trace->path.end();
 			currentEvent != endEvent; currentEvent++) {
 		if ((*currentEvent)->isGlobal == true) {
-			if ((*currentEvent)->inst->inst->getOpcode() == llvm::Instruction::Load
-					|| (*currentEvent)->inst->inst->getOpcode() == llvm::Instruction::Store) {
-				if (RelatedSymbolicExpr.find((*currentEvent)->varName) == RelatedSymbolicExpr.end()) {
-					(*currentEvent)->usefulGlobal = false;
-				} else {
 					(*currentEvent)->usefulGlobal = true;
-				}
-			}
+		}
+	}
+
+	//all_lock_unlock
+	std::map<std::string, std::vector<LockPair *> > &all_lock_unlock = trace->all_lock_unlock;
+	std::map<std::string, std::vector<LockPair *> > &all_lock_unlock_useful = trace->all_lock_unlock_useful;
+	all_lock_unlock_useful.clear();
+	for (std::map<std::string, std::vector<LockPair *> >::iterator nit =
+			all_lock_unlock.begin(), nie = all_lock_unlock.end(); nit != nie; ++nit) {
+		all_lock_unlock_useful.insert(*nit);
+	}
+
+	//all_wait
+	std::map<std::string, std::vector<Wait_Lock *> > &all_wait = trace->all_wait;
+	for (std::map<std::string, std::vector<Wait_Lock *> >::iterator nit =
+			all_wait.begin(), nie = all_wait.end(); nit != nie; ++nit) {
+		for (std::vector<Wait_Lock *>::iterator it =
+				nit->second.begin(), ie = nit->second.end(); it != ie; it++) {
+			(*it)->wait->usefulGlobal = false;
+		}
+	}
+	//all_signal
+	std::map<std::string, std::vector<Event *> > &all_signal = trace->all_signal;
+	for (std::map<std::string, std::vector<Event *> >::iterator nit =
+			all_signal.begin(), nie = all_signal.end(); nit != nie; ++nit) {
+		for (std::vector<Event *>::iterator it =
+				nit->second.begin(), ie = nit->second.end(); it != ie; it++) {
+			(*it)->usefulGlobal = false;
 		}
 	}
 }
@@ -268,7 +276,6 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, unsigned eventIdPre, 
 #if DEBUG
 			std::cerr << "event id : " << (*ie)->eventId << " name : " << (*ie)->globalVarFullName << std::endl;
 #endif
-//			if ((*ie)->eventId > event->eventId + RANGE) {
 			if ((*ie)->eventId > eventIdPost) {
 				(*ie)->usefulGlobal = false;
 				nit->second.pop_back();
@@ -310,9 +317,9 @@ void DealWithSymbolicExpr::fillterTraceAfter(Trace* trace, unsigned eventIdPre, 
 			std::cerr << "unlockEvent id : " << (*ie)->unlockEvent->eventId << std::endl;
 #endif
 //			if ((*ie)->lockEvent->eventId > event->eventId + RANGE) {
-			if ((*ie)->lockEvent->eventId > eventIdPost) {
+			if ((*ie)->lockEvent->eventId >= eventIdPost) {
 				num = 1;
-			} else if ((*ie)->unlockEvent->eventId < eventIdPre) {
+			} else if ((*ie)->unlockEvent->eventId <= eventIdPre) {
 				num = 1;
 			}
 			if (num == 1) {
